@@ -46,40 +46,24 @@ function generateCraftedImage(callback) {
 
 // Handle image upload and forward to image service
 function handleUpload(req, res) {
-  // Collect raw request body
-  const chunks = [];
-  req.on("data", (chunk) => chunks.push(chunk));
-  req.on("end", () => {
-    const imageData = Buffer.concat(chunks);
+  // Forward to image service using streaming
+  const formData = new FormData();
+  formData.append("image", req, {
+    filename: "upload.jpeg",
+    contentType: "image/jpeg",
+  });
+  formData.append("is_admin", "false");
+  console.log("Boundary:", formData.getBoundary());
 
-    // Extract boundary from Content-Type header
-    const contentType = req.headers["content-type"] || "";
-    const boundaryMatch = contentType.match(/boundary=(.+)$/);
-    if (!boundaryMatch) {
-      res.writeHead(400);
-      res.end("Missing boundary in Content-Type");
+  formData.submit("http://localhost:5003/process", (err, resp) => {
+    if (err) {
+      res.writeHead(500);
+      res.end("Error forwarding to image service");
       return;
     }
-
-    // Forward to image service
-    const formData = new FormData();
-    formData.append("image", imageData, {
-      filename: "upload.jpeg",
-      contentType: "image/jpeg",
-    });
-    formData.append("is_admin", "false");
-    console.log("Boundary:", formData.getBoundary());
-
-    formData.submit("http://localhost:5003/process", (err, resp) => {
-      if (err) {
-        res.writeHead(500);
-        res.end("Error forwarding to image service");
-        return;
-      }
-      resp.resume();
-      res.writeHead(200);
-      res.end("Image processed by image service");
-    });
+    resp.resume();
+    res.writeHead(200);
+    res.end("Image processed by image service");
   });
 }
 
