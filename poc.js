@@ -84,7 +84,6 @@ predictor.predictNext(24).then(function (next24RandomOutputs) {
 
 const server = http.createServer((req, res) => {
   const incomingForm = new IncomingForm({
-    uploadDir: path.join(rootDir, "/tmp"),
     keepExtensions: true,
   });
   incomingForm.parse(req);
