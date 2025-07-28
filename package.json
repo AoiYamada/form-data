@@ -13,6 +13,7 @@
   "dependencies": {
     "form-data": "4.0.3",
     "formidable": "^3.5.4",
+    "parse-multipart-data": "^1.5.0",
     "predict-v8-randomness": "^1.0.35"
   }
 }

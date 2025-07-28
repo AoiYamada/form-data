@@ -3,6 +3,7 @@ const fs = require("fs");
 const path = require("path");
 const FormData = require("form-data");
 const predictV8Randomness = require("predict-v8-randomness");
+const multipart = require("parse-multipart-data");
 
 const port = 5002;
 const craftedImagePath = path.join(__dirname, "../cabo-pero-injected.jpeg");
@@ -46,9 +47,14 @@ function generateCraftedImage(callback) {
 
 // Handle image upload and forward to image service
 function handleUpload(req, res) {
-  // Forward to image service using streaming
+  // Extract boundary from Content-Type header
+  const contentType = req.headers["content-type"] || "";
+  const boundary = multipart.getBoundary(contentType);
+  const [file] = multipart.parse(req.body, boundary);
+
+  // Forward to image service
   const formData = new FormData();
-  formData.append("image", req, {
+  formData.append("image", file.data, {
     filename: "upload.jpeg",
     contentType: "image/jpeg",
   });
@@ -81,7 +87,13 @@ generateCraftedImage(() => {
         return;
       }
       if (req.url === "/upload" && req.method === "POST") {
-        handleUpload(req, res);
+        req.body = Buffer.alloc(0);
+        req.on("data", (chunks) => {
+          req.body = Buffer.concat([req.body, chunks]);
+        });
+        req.on("end", () => {
+          handleUpload(req, res);
+        });
       } else {
         res.writeHead(404);
         res.end("Not found");
